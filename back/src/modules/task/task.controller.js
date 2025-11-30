@@ -140,7 +140,7 @@ class TaskController {
   admintaskview = async(req, res, next)=>{
     try{
       const id = req.params.id
-      const tasks = await TaskModel.find({ userId: req.authuser._id });
+      const tasks = await TaskModel.find({ userId: id });
        res.json({
         result: tasks,
         message: "User tasks for admin retrieved successfully",
