@@ -8,6 +8,7 @@ mongoose.connect(mongouri,{   // it cant be asynced so using then and catch
     autoCreate : true , 
     autoIndex : true,
 }).then(()=>{
+    
     console.log("DB server connected sucessfully ....")
 })
 .catch((err) => {

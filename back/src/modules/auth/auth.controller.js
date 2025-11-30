@@ -1,10 +1,18 @@
-const { StatusType } = require("../../config/constant.config");
 const userSvc = require("../user/user.service");
 const bcrypt = require('bcryptjs')
 const jwt = require("jsonwebtoken")
 const mailSvc = require("../../services/mail.service")
 
 class AuthController{
+    randomStringGenerator= (n) => {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let result = '';
+  for (let i = 0; i < n; i++) {
+    const randomIndex = Math.floor(Math.random() * chars.length);
+    result += chars[randomIndex];
+  }
+  return result;
+}
     sendActivationEmail = async ({
         name,
         email,
@@ -39,13 +47,14 @@ class AuthController{
           throw exception;
         }
       };
+
     generateUserActivationToken = (data) => {
-    data.activationToken = randomStringGenerator(100);
+    data.activationToken = this.randomStringGenerator(100);
     data.activateFor = new Date(
       Date.now() + process.env.TOKEN_ACTIVE_TIME * 60 * 60 * 1000
     );
     return data;
-  };
+      };
     activateUser = async (req, res , next) => {
         try{
            
@@ -102,7 +111,7 @@ class AuthController{
             if (bcrypt.compareSync(password, user.password)) {
                 if (user.status === "ACTIVE") {
                     const token = jwt.sign(
-                        { sub: user._id },
+                        { sub: user._id,role: user.role },
                          process.env.JWT_SECRET
                         // ,{
                         //     expiresIn : "1 day",
@@ -142,39 +151,54 @@ class AuthController{
             next(exception);
         }
     }
-     resendActivationToken = async (req,res,next) => {
-     try{
-        const {id} = req.params;
+    resendActivationToken = async (req, res, next) => {
+    try {
+        const { token } = req.params; // Get expired token from URL
+        
+        // Find user by the expired activation token
         let user = await userSvc.getSingleUserByFilter({
-            _id:id 
-        })
-         if (!user) {
+            activationToken: token
+        });
+        
+        if (!user) {
             return res.status(404).json({
                 result: null,
-                message: "User not found",
+                message: "Invalid token or user not found",
                 meta: null
             });
         }
 
+        // Check if already activated
+        if (user.isActivated) {
+            return res.status(400).json({
+                result: null,
+                message: "Account is already activated",
+                meta: null
+            });
+        }
+
+        // Generate new activation token
         user = this.generateUserActivationToken(user);
-        await user.save()   // insertt or update
+        await user.save();
+        
+        // Send new activation email
         await this.sendActivationEmail({
             email: user.email,
-            name : user.name,
-            token:user.activationToken,
-            sub: " re-send , activate your account !!"
-
-        })
+            name: user.name,
+            token: user.activationToken,
+            sub: "Re-send: Activate your account!"
+        });
+        
         res.json({
-            result : null,
-            message:" a new activation link has been sent tp your registered email",
-            meta : null
-        })
-     }   catch(exception){
-        next(exception)
-
-     }
+            result: null,
+            message: "A new activation link has been sent to your registered email",
+            meta: null
+        });
+        
+    } catch (exception) {
+        next(exception);
     }
+}
      refreshToken = async (req,res,next) => {
         try{
 
@@ -195,7 +219,6 @@ class AuthController{
                 //     expiresIn : "1 day",
                 //     algorithm:
                 // }
-
 
 
             );
@@ -219,6 +242,41 @@ class AuthController{
             next(exception)
         }
     }
+    checkadmin = async(req,res,next) =>{
+    try{
+
+      let token = req.headers['authorization'] || null;
+      console.log(token)
+      if (!token) {
+      throw { status: 401, message: "Unauthorized access: token missing" };
+    }
+
+    // Extract Bearer token
+    token = token.split(" ").pop();
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    const role = decoded.role
+    let msg ="" ;
+    if(role === 'admin')
+    {
+        msg = "welcome to admin"
+    }
+    else{
+         msg = "unauthorization access"
+    }
+     const user = await userSvc.getUserById(req.authuser._id);
+      res.json({
+      result : { _id: user._id, name: user.name, email: user.email, role: user.role, },
+      message: msg,
+      meta :null 
+    });
+
+    }catch(exception){
+      next(exception)
+    }
+
+  }
 }
 
 

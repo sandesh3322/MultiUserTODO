@@ -11,6 +11,7 @@ const logincheck = async (req, res, next) => {
 
     // Extract Bearer token
     token = token.split(" ").pop();
+    // console.log(token)
 
     let data;
     try {

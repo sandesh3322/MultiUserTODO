@@ -1,4 +1,4 @@
-const TaskModel = require("./task.model");
+const TaskModel = require("./../modules/task/task.model");
 
 const selfTaskChecker = async (req, res, next) => {
   try {

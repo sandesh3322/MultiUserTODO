@@ -1,45 +1,56 @@
-const express=require('express')
-const cors=require('cors');
+const express = require("express");
+const cors = require("cors");
 require("./db.config");
 const router = require("./router.config");
-const app=express();
-app.use(cors())
-app.use(express.json()); // parse JSON requests
-app.use(express.urlencoded({ extended: true })); // parse URL-encoded data (optional if not using forms)
-app.use(router); // your API routes
 
-app.use((req,res,next)=>{
-  next({status:404,message:"resource not found."})
-})
+const app = express();
 
-app.use((error,req,res,next)=>{
+app.use(cors());
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-    console.log("error", error);
-    let statusCode = error.status || 500 ; 
-    let message = error.message || "server error..."
-    let detail = error.detail || null;
-    
+// Use your API routes
+app.use(router);
 
+// 404 handler
+app.use((req, res, next) => {
+  next({ status: 404, message: "Resource not found." });
+});
 
-    // mongo db unique error handling 
-    if(error.code == 11000){
-      const uniqueFailedKeys = Object.keys(error.keyPattern)
-      detail = {};
-      message = "validation failed";
+// Error handling middleware
+app.use((error, req, res, next) => {
+  console.error("Server Error:", error); // log full error for debugging
 
-      uniqueFailedKeys.map((field)=>{
-          detail[field] = field+'should be unique'
-      })
-      statusCode = 400
+  let statusCode = error.status || 500;
+  let message = error.message || "Internal Server Error";
+  let detail = error.detail || null;
+
+  // MongoDB unique key error handling
+  if (error.code === 11000) {
+    const uniqueFailedKeys = Object.keys(error.keyPattern || {});
+    detail = {};
+    uniqueFailedKeys.forEach((field) => {
+      detail[field] = `${field} must be unique`;
+    });
+    statusCode = 400;
+    message = "Validation failed";
   }
 
-    
-    res.status(statusCode).json({
-       result: detail,
-       message: message,
-       meta:null
-    })
+  // Optional: Mongoose validation errors
+  if (error.name === "ValidationError") {
+    statusCode = 400;
+    message = "Validation failed";
+    detail = {};
+    Object.keys(error.errors).forEach((key) => {
+      detail[key] = error.errors[key].message;
+    });
+  }
 
-})
+  res.status(statusCode).json({
+    result: detail,
+    message: message,
+    meta: null,
+  });
+});
 
-module.exports = app ;
+module.exports = app;

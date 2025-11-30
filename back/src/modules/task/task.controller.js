@@ -126,7 +126,7 @@ class TaskController {
         return res.status(403).json({ message: "Unauthorized: only owner can delete" });
       }
 
-      await task.remove();
+      await task.deleteOne();
 
       res.json({
         result: null,
@@ -137,6 +137,21 @@ class TaskController {
       next(error);
     }
   };
+  admintaskview = async(req, res, next)=>{
+    try{
+      const id = req.params.id
+      const tasks = await TaskModel.find({ userId: req.authuser._id });
+       res.json({
+        result: tasks,
+        message: "User tasks for admin retrieved successfully",
+        meta: null,
+      });
+
+
+    }catch(exception){
+
+    }
+  }
 }
 
 module.exports = new TaskController();

@@ -21,6 +21,11 @@ const UserSchema = new mongoose.Schema({
     enum: ["INACTIVE", "ACTIVE", "SUSPENDED"],
     default: "INACTIVE"
   },
+  role: {
+    type: String,
+    enum: ["user", "admin"],
+    default: "user"
+  },
   activationToken: { type: String, default: null },
   activateFor: { type: Date, default: null },
   refreshToken: { type: String, default: null }, // optional: if storing refresh tokens

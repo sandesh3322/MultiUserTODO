@@ -1,10 +1,11 @@
 const bcrypt = require('bcryptjs');
+require('dotenv').config({ path: '../../.env' });
 require("../config/db.config");
 const UserModel = require('../modules/user/user.model');
 
 const adminUsers = [
     {
-        name: "sandesh admin",
+        name: "sandesh admin poudel",
         email: "sandezpoudel@gmail.com",
         password: bcrypt.hashSync("admin123", 10),
         role: "admin",

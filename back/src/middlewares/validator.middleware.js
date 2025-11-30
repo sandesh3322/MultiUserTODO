@@ -1,24 +1,26 @@
 const bodyValidator = (schema) => {
-    return async (req, res, next) => {
-        try {
-            // Validate request body using the provided Joi schema
-            await schema.validateAsync(req.body, { abortEarly: false });
-            next(); // pass to next middleware/controller if valid
-        } catch (exception) {
-            // Collect Joi validation errors into a simple object
-            const detail = {};
-            if (exception.details) {
-                exception.details.forEach((error) => {
-                    detail[error.path[0]] = error.message;
-                });
-            }
+  return (req, res, next) => {
+    try {
+      const { error, value } = schema.validate(req.body, {
+        abortEarly: false,
+        stripUnknown: true
+      });
 
-            // Pass the error to the error-handling middleware
-            next({ status: 400, detail });
-        }
-    };
+      if (error) {
+        const detail = {};
+        error.details.forEach(err => {
+          detail[err.path.join('.')] = err.message;
+        });
+        return next({ status: 400, message: "Validation failed", detail });
+      }
+
+      req.body = value; // sanitized
+      next();
+    } catch (ex) {
+      console.error("Unexpected validator error:", ex);
+      next(ex);
+    }
+  };
 };
 
-module.exports = {
-    bodyValidator
-};
+module.exports = { bodyValidator };
