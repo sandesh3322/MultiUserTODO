@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import axios from 'axios';
 import { toast } from 'react-toastify';
@@ -22,9 +22,11 @@ interface Task {
   createdAt: string;
 }
 
+type SortOption = 'dueDate' | 'priority' | 'status' | 'title' | 'createdAt';
+
 export default function ProfilePage() {
   const router = useRouter();
-  const hasCheckedAuth = useRef(false); // Prevent multiple auth checks
+  const hasCheckedAuth = useRef(false);
   const [user, setUser] = useState<User | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -36,8 +38,13 @@ export default function ProfilePage() {
   const [newTask, setNewTask] = useState({ title: '', description: '', status: 'PENDING', priority: 'MEDIUM', dueDate: '' });
   const [editTask, setEditTask] = useState({ title: '', description: '', status: '', priority: '', dueDate: '' });
 
+  // NEW: Search and Sort States
+  const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [sortBy, setSortBy] = useState<SortOption>('createdAt');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+
   useEffect(() => {
-    // Prevent multiple executions
     if (hasCheckedAuth.current) return;
     hasCheckedAuth.current = true;
 
@@ -50,6 +57,17 @@ export default function ProfilePage() {
     fetchTasks();
   }, [router]);
 
+  // NEW: Debounce Effect for Search
+  // This delays the search execution until user stops typing for 500ms
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+    }, 500); // 500ms delay
+
+    // Cleanup function: cancels the timer if searchQuery changes before 500ms
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
   const fetchProfile = async () => {
     try {
       const token = localStorage.getItem('token');
@@ -59,8 +77,8 @@ export default function ProfilePage() {
       );
       setUser(response.data.result);
     } catch (error: any) {
-     let msg: any=  error.response.data.result
-      toast.error( Object.values(msg)[0] as string, {
+      let msg: any = error.response.data.result;
+      toast.error(Object.values(msg)[0] as string, {
         position: "top-right",
         autoClose: 4000,
       });
@@ -78,12 +96,63 @@ export default function ProfilePage() {
       );
       setTasks(response.data.result);
     } catch (error: any) {
-     let msg: any=  error.response.data.result
-      toast.error( Object.values(msg)[0] as string, {
+      let msg: any = error.response.data.result;
+      toast.error(Object.values(msg)[0] as string, {
         position: "top-right",
         autoClose: 4000,
       });
     }
+  };
+
+  // NEW: Filtered and Sorted Tasks using useMemo
+  // useMemo prevents recalculation on every render - only recalculates when dependencies change
+  const filteredAndSortedTasks = useMemo(() => {
+    let result = [...tasks];
+
+    // Filter by search query
+    if (debouncedSearch) {
+      const searchLower = debouncedSearch.toLowerCase();
+      result = result.filter(task =>
+        task.title.toLowerCase().includes(searchLower) ||
+        task.description.toLowerCase().includes(searchLower)
+      );
+    }
+
+    // Sort tasks
+    result.sort((a, b) => {
+      let compareValue = 0;
+
+      switch (sortBy) {
+        case 'title':
+          compareValue = a.title.localeCompare(b.title);
+          break;
+        case 'status':
+          const statusOrder = { 'PENDING': 0, 'IN_PROGRESS': 1, 'COMPLETED': 2 };
+          compareValue = statusOrder[a.status as keyof typeof statusOrder] - statusOrder[b.status as keyof typeof statusOrder];
+          break;
+        case 'priority':
+          const priorityOrder = { 'HIGH': 0, 'MEDIUM': 1, 'LOW': 2 };
+          compareValue = priorityOrder[a.priority as keyof typeof priorityOrder] - priorityOrder[b.priority as keyof typeof priorityOrder];
+          break;
+        case 'dueDate':
+          const dateA = a.dueDate ? new Date(a.dueDate).getTime() : Infinity;
+          const dateB = b.dueDate ? new Date(b.dueDate).getTime() : Infinity;
+          compareValue = dateA - dateB;
+          break;
+        case 'createdAt':
+          compareValue = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+          break;
+      }
+
+      return sortOrder === 'asc' ? compareValue : -compareValue;
+    });
+
+    return result;
+  }, [tasks, debouncedSearch, sortBy, sortOrder]);
+
+  // NEW: Toggle Sort Order
+  const toggleSortOrder = () => {
+    setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
   };
 
   const handleCreateTask = async (e: React.FormEvent) => {
@@ -106,15 +175,14 @@ export default function ProfilePage() {
       setNewTask({ title: '', description: '', status: 'PENDING', priority: 'MEDIUM', dueDate: '' });
       fetchTasks();
     } catch (error: any) {
-     let msg: any=  error.response.data.result
-      toast.error( Object.values(msg)[0] as string, {
+      let msg: any = error.response.data.result;
+      toast.error(Object.values(msg)[0] as string, {
         position: "top-right",
         autoClose: 4000,
       });
     }
   };
 
-  // Helper function to format date for input field (YYYY-MM-DD)
   const formatDateForInput = (dateString?: string) => {
     if (!dateString) return '';
     try {
@@ -146,8 +214,8 @@ export default function ProfilePage() {
       setShowViewModal(true);
       setIsEditing(false);
     } catch (error: any) {
-      let msg: any=  error.response.data.result
-      toast.error( Object.values(msg)[0] as string, {
+      let msg: any = error.response.data.result;
+      toast.error(Object.values(msg)[0] as string, {
         position: "top-right",
         autoClose: 4000,
       });
@@ -161,7 +229,6 @@ export default function ProfilePage() {
     try {
       const token = localStorage.getItem('token');
       
-      // Include userId in the update request
       const updateData = {
         ...editTask,
         userId: user?._id
@@ -177,8 +244,8 @@ export default function ProfilePage() {
       setIsEditing(false);
       fetchTasks();
     } catch (error: any) {
-      let msg: any=  error.response.data.result
-      toast.error( Object.values(msg)[0] as string, {
+      let msg: any = error.response.data.result;
+      toast.error(Object.values(msg)[0] as string, {
         position: "top-right",
         autoClose: 4000,
       });
@@ -199,8 +266,8 @@ export default function ProfilePage() {
       setShowViewModal(false);
       fetchTasks();
     } catch (error: any) {
-     let msg: any=  error.response.data.result
-      toast.error( Object.values(msg)[0] as string, {
+      let msg: any = error.response.data.result;
+      toast.error(Object.values(msg)[0] as string, {
         position: "top-right",
         autoClose: 4000,
       });
@@ -213,14 +280,9 @@ export default function ProfilePage() {
   };
 
   const handleLogout = () => {
-    // Clear tokens
     localStorage.removeItem('token');
     localStorage.removeItem('refreshToken');
-    
-    // Show message
     toast.success("Logged out successfully!");
-    // router.push("/login")
-    // Force a hard navigation to login page
     window.location.href = '/auth/login';
   };
 
@@ -241,9 +303,6 @@ export default function ProfilePage() {
     );
   }
 
-  
-
-
   return (
     <div className="min-h-screen bg-black text-white p-6">
       <div className="max-w-6xl mx-auto">
@@ -261,7 +320,7 @@ export default function ProfilePage() {
         {/* Profile Card */}
         <div className="bg-gray-900 rounded-lg p-6 mb-8 border border-gray-800">
           <div className="flex items-center gap-4 mb-4">
-            <div className="w-20 h-20 bg-linear-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-3xl font-bold">
+            <div className="w-20 h-20 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-3xl font-bold">
               {user?.name.charAt(0).toUpperCase()}
             </div>
             <div>
@@ -288,7 +347,10 @@ export default function ProfilePage() {
         {/* Tasks Section */}
         <div className="bg-gray-900 rounded-lg p-6 border border-gray-800">
           <div className="flex justify-between items-center mb-6">
-            <h2 className="text-2xl font-bold">My Tasks ({tasks.length})</h2>
+            <h2 className="text-2xl font-bold">
+              My Tasks ({filteredAndSortedTasks.length}
+              {debouncedSearch && ` of ${tasks.length}`})
+            </h2>
             <button
               onClick={() => setShowCreateModal(true)}
               className="px-4 py-2 bg-green-600 rounded-lg hover:bg-green-700 transition font-semibold"
@@ -297,15 +359,90 @@ export default function ProfilePage() {
             </button>
           </div>
 
+          {/* NEW: Search and Sort Controls */}
+          <div className="mb-6 space-y-4">
+            {/* Search Bar */}
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="Search tasks by title or description..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full px-4 py-3 pl-10 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:border-blue-500 text-white placeholder-gray-500"
+              />
+              <svg
+                className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-500"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-white"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+
+            {/* Sort Controls */}
+            <div className="flex flex-wrap gap-3 items-center">
+              <span className="text-sm text-gray-400 font-semibold">Sort by:</span>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as SortOption)}
+                className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:border-blue-500 text-white text-sm"
+              >
+                <option value="createdAt">Created Date</option>
+                <option value="dueDate">Due Date</option>
+                <option value="priority">Priority</option>
+                <option value="status">Status</option>
+                <option value="title">Title</option>
+              </select>
+              
+              <button
+                onClick={toggleSortOrder}
+                className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg hover:bg-gray-700 transition text-sm font-semibold flex items-center gap-2"
+              >
+                {sortOrder === 'asc' ? '↑ Ascending' : '↓ Descending'}
+              </button>
+
+              {(searchQuery || sortBy !== 'createdAt' || sortOrder !== 'desc') && (
+                <button
+                  onClick={() => {
+                    setSearchQuery('');
+                    setSortBy('createdAt');
+                    setSortOrder('desc');
+                  }}
+                  className="px-3 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition text-sm font-semibold"
+                >
+                  Reset Filters
+                </button>
+              )}
+            </div>
+          </div>
+
           {/* Tasks Grid */}
-          {tasks.length === 0 ? (
+          {filteredAndSortedTasks.length === 0 ? (
             <div className="text-center py-12 text-gray-400">
-              <p className="text-xl mb-2">No tasks yet</p>
-              <p>Create your first task to get started!</p>
+              {tasks.length === 0 ? (
+                <>
+                  <p className="text-xl mb-2">No tasks yet</p>
+                  <p>Create your first task to get started!</p>
+                </>
+              ) : (
+                <>
+                  <p className="text-xl mb-2">No tasks found</p>
+                  <p>Try adjusting your search or filters</p>
+                </>
+              )}
             </div>
           ) : (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {tasks.map((task) => (
+              {filteredAndSortedTasks.map((task) => (
                 <div
                   key={task._id}
                   className="bg-gray-800 rounded-lg p-4 border border-gray-700 hover:border-gray-600 transition cursor-pointer"
@@ -533,7 +670,7 @@ export default function ProfilePage() {
                   <label className="block text-sm font-semibold mb-2">Due Date</label>
                   <input
                     type="date"
-                    value={ editTask.dueDate? new Date(editTask.dueDate).toISOString().slice(0, 10): undefined}
+                    value={editTask.dueDate ? new Date(editTask.dueDate).toISOString().slice(0, 10) : ''}
                     onChange={(e) => setEditTask({ ...editTask, dueDate: e.target.value })}
                     className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded focus:outline-none focus:border-blue-500 text-white"
                   />
@@ -559,7 +696,7 @@ export default function ProfilePage() {
         </div>
       )}
 
-      {/* Delete Confirmation Modal */}
+     {/* Delete Confirmation Modal */}
       {showDeleteConfirm && selectedTask && (
         <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-50">
           <div className="bg-gray-900 rounded-lg p-6 max-w-md w-full border border-red-800">

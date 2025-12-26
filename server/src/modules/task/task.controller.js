@@ -4,12 +4,14 @@ class TaskController {
   // Create task → only user
   createTask = async (req, res, next) => {
     try {
-      const { title, description, status } = req.body;
+      const { title, description, status, priority , dueDate } = req.body;
 
       const task = new TaskModel({
         title,
         description,
         status: status || "pending",
+        priority: priority || "medium",
+        dueDate: dueDate || null,
         userId: req.authuser._id, // link task to logged-in user
       });
 
